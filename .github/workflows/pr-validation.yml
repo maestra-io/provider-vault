@@ -1,0 +1,48 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - '**/*.md'
+      - '.gitignore'
+
+# Cancel an in-flight run when a new push lands on the same PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    # `eu-aws-general-runners` is the maestra-io org's self-hosted Actions
+    # Runner Scale Set; the release workflow runs there too.
+    runs-on: [eu-aws-general-runners]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install build tooling (make)
+        run: |
+          if ! command -v make >/dev/null 2>&1; then
+            sudo apt-get update -y
+            sudo apt-get install -y --no-install-recommends make
+          fi
+          make --version
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Build (full-module compile)
+        run: make build
+
+      - name: Run unit tests (config/database create-only password diff)
+        run: make test

@@ -1,0 +1,227 @@
+name: Release
+
+# Single serialized release queue: a second tag push (or workflow_dispatch)
+# waits for the in-flight run to finish instead of cancelling it. Half-pushed
+# multi-arch images / xpkgs aren't safe to abandon mid-flight.
+concurrency: release
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+    paths-ignore:
+      - '**/*.md'
+      - '.gitignore'
+  # Manual trigger so a failed ECR push or transient signing error can be
+  # retried without retagging — pick any existing tag from the dropdown.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to (re)release. Must already exist on the repo."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: eu-central-1
+  ECR_REGISTRY: 515260921971.dkr.ecr.eu-central-1.amazonaws.com
+  ECR_REPOSITORY: provider-vault
+  TELEPORT_FQDN: teleport.maestra.io:443
+  TELEPORT_TOKEN: image-push-github-actions-provider-vault
+  AWS_ROLE_ARN: arn:aws:iam::515260921971:role/teleport-image-push
+
+jobs:
+  test:
+    name: Test
+    runs-on: [eu-aws-general-runners]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      # The self-hosted runner image is intentionally minimal (no make).
+      # Install it deterministically so this job survives runner-image rebuilds.
+      - name: Install build tooling (make)
+        run: |
+          if ! command -v make >/dev/null 2>&1; then
+            sudo apt-get update -y
+            sudo apt-get install -y --no-install-recommends make
+          fi
+          make --version
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Build (full-module compile)
+        run: make build
+
+      - name: Run unit tests (config/database create-only password diff)
+        run: make test
+
+  image:
+    name: Build & push image + xpkg
+    needs: test
+    # `eu-aws-general-runners` is the maestra-io org's self-hosted Actions
+    # Runner Scale Set (provisioned out of aws-infra/helmfile/values/
+    # eu-aws.production/actions-runner-scale-set-general.yaml) — same pool
+    # provider-cloudflare and others use. Plenty of disk for multi-arch buildx.
+    runs-on: [eu-aws-general-runners]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    env:
+      IMAGE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # On workflow_dispatch (re-)release the requested tag, not main.
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Install build tooling (make)
+        run: |
+          if ! command -v make >/dev/null 2>&1; then
+            sudo apt-get update -y
+            sudo apt-get install -y --no-install-recommends make
+          fi
+          make --version
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Install crossplane CLI
+        run: |
+          curl -sL https://raw.githubusercontent.com/crossplane/crossplane/main/install.sh | sh
+          sudo install crossplane /usr/local/bin/crossplane
+
+      - name: Get Teleport version
+        id: tp-version
+        run: |
+          VERSION=$(curl -sf "https://${{ env.TELEPORT_FQDN }}/webapi/find" | jq -r '.auto_update.tools_version // .server_version')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v5
+        with:
+          path: ${{ runner.tool_cache }}/teleport
+          key: teleport-${{ steps.tp-version.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
+
+      - uses: teleport-actions/setup@v1
+        with:
+          version: ${{ steps.tp-version.outputs.version }}
+          proxy: ${{ env.TELEPORT_FQDN }}
+
+      - name: Mint Teleport workload-identity JWT for AWS
+        run: |
+          cat > /tmp/tbot.yaml << EOF
+          version: v2
+          proxy_server: ${{ env.TELEPORT_FQDN }}
+          onboarding:
+            join_method: github
+            token: ${{ env.TELEPORT_TOKEN }}
+          oneshot: true
+          storage:
+            type: memory
+          services:
+            - type: workload-identity-jwt
+              destination:
+                type: directory
+                path: /tmp/tbot-output
+              selector:
+                name: image-push
+              audiences: ["sts.amazonaws.com"]
+          EOF
+
+          mkdir -p /tmp/tbot-output
+          tbot start -c /tmp/tbot.yaml || true
+          test -f /tmp/tbot-output/jwt_svid
+
+      # configure-aws-credentials + amazon-ecr-login are pure JS actions; they
+      # do not depend on `aws` / `pip` being on the runner image. The two ECR
+      # repos (provider-vault, provider-vault-pkg) are provisioned in aws-infra
+      # terraform; recreating them is a deliberate operator action, not
+      # something this workflow should silently bootstrap.
+      - name: Configure AWS credentials (Teleport WI → STS AssumeRoleWithWebIdentity)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          web-identity-token-file: /tmp/tbot-output/jwt_svid
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registries: "515260921971"
+
+      - name: Set up QEMU (for cross-arch image build)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install syft (SBOM generator)
+        env:
+          SYFT_VERSION: 1.42.3
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xzC "$HOME/.local/bin" syft
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/syft" version
+
+      - name: Build and push multi-arch image
+        run: make image.buildx.push
+
+      - name: Resolve image digest
+        id: image-digest
+        run: |
+          digest=$(docker buildx imagetools inspect "${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}@${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Sign image (cosign keyless / OIDC)
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: cosign sign --yes "${{ steps.image-digest.outputs.image_ref }}"
+
+      - name: Generate SBOM (SPDX JSON)
+        run: |
+          syft "${{ steps.image-digest.outputs.image_ref }}" \
+            -o spdx-json="provider-vault-${{ env.IMAGE_TAG }}.sbom.spdx.json"
+
+      - name: Attest SBOM
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign attest --yes \
+            --predicate "provider-vault-${{ env.IMAGE_TAG }}.sbom.spdx.json" \
+            --type spdxjson \
+            "${{ steps.image-digest.outputs.image_ref }}"
+
+      - name: Upload SBOM as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-vault-sbom-${{ env.IMAGE_TAG }}
+          path: provider-vault-${{ env.IMAGE_TAG }}.sbom.spdx.json
+          retention-days: 90
+
+      - name: Build and push xpkg
+        run: make xpkg.push
+
+      - name: Sign xpkg (cosign keyless / OIDC)
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          # The xpkg push uses a separate ECR repo (provider-vault-pkg);
+          # resolve its digest the same way we did for the controller image.
+          xpkg_digest=$(docker buildx imagetools inspect "${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}-pkg:${{ env.IMAGE_TAG }}" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          cosign sign --yes "${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}-pkg@${xpkg_digest}"
