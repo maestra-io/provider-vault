@@ -18,20 +18,12 @@ permissions:
 jobs:
   test:
     name: Test
-    # `eu-aws-general-runners` is the maestra-io org's self-hosted Actions
-    # Runner Scale Set; the release workflow runs there too.
-    runs-on: [eu-aws-general-runners]
+    # GitHub-hosted — the build is just two small Go binaries + a unit test,
+    # no self-hosted runner needed (ubuntu-latest already ships make + gcc).
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-
-      - name: Install build tooling (make)
-        run: |
-          if ! command -v make >/dev/null 2>&1; then
-            sudo apt-get update -y
-            sudo apt-get install -y --no-install-recommends make
-          fi
-          make --version
 
       - name: Setup Go
         uses: actions/setup-go@v6

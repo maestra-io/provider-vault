@@ -37,20 +37,11 @@ env:
 jobs:
   test:
     name: Test
-    runs-on: [eu-aws-general-runners]
+    # GitHub-hosted — ubuntu-latest already ships make + gcc.
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-
-      # The self-hosted runner image is intentionally minimal (no make).
-      # Install it deterministically so this job survives runner-image rebuilds.
-      - name: Install build tooling (make)
-        run: |
-          if ! command -v make >/dev/null 2>&1; then
-            sudo apt-get update -y
-            sudo apt-get install -y --no-install-recommends make
-          fi
-          make --version
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -69,11 +60,9 @@ jobs:
   image:
     name: Build & push image + xpkg
     needs: test
-    # `eu-aws-general-runners` is the maestra-io org's self-hosted Actions
-    # Runner Scale Set (provisioned out of aws-infra/helmfile/values/
-    # eu-aws.production/actions-runner-scale-set-general.yaml) — same pool
-    # provider-cloudflare and others use. Plenty of disk for multi-arch buildx.
-    runs-on: [eu-aws-general-runners]
+    # GitHub-hosted. The build is two small Go binaries + a distroless image +
+    # an xpkg — well within ubuntu-latest's disk; no self-hosted runner needed.
+    runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     env:
       IMAGE_TAG: ${{ inputs.tag || github.ref_name }}
@@ -82,14 +71,6 @@ jobs:
         with:
           # On workflow_dispatch (re-)release the requested tag, not main.
           ref: ${{ inputs.tag || github.ref }}
-
-      - name: Install build tooling (make)
-        run: |
-          if ! command -v make >/dev/null 2>&1; then
-            sudo apt-get update -y
-            sudo apt-get install -y --no-install-recommends make
-          fi
-          make --version
 
       - name: Setup Go
         uses: actions/setup-go@v6
