@@ -1,0 +1,26 @@
+apiVersion: meta.pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-vault
+  annotations:
+    meta.crossplane.io/maintainer: Maestra Platform <platform@maestra.io>
+    meta.crossplane.io/source: github.com/maestra-io/provider-vault
+    meta.crossplane.io/license: Apache-2.0
+    meta.crossplane.io/description: |
+      Maestra fork of upbound/provider-vault (v4.0.0). Adds a create-only
+      password fix for vault_database_secret_backend_connection so Vault's
+      rotate-root password is not clobbered on reconcile/cold-start
+      (https://github.com/upbound/provider-vault/issues/38).
+    meta.crossplane.io/readme: |
+      Maestra fork of upbound/provider-vault. See config/database for the
+      create-only password TerraformCustomDiff.
+spec:
+  controller:
+    # Image is templated by `make xpkg.build` from $(IMAGE). Never edit the
+    # generated package/crossplane.yaml directly — change this template
+    # instead. A floating tag would defeat the SHA-pin guarantee.
+    image: "@@IMAGE@@"
+  capabilities:
+    - SafeStart
+  crossplane:
+    version: ">=v2.0.0"

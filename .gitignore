@@ -12,3 +12,5 @@ cover.out
 # ignore IDE folders
 .vscode/
 .idea/
+_output/
+.work/
