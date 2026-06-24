@@ -123,17 +123,30 @@ jobs:
           tbot start -c /tmp/tbot.yaml || true
           test -f /tmp/tbot-output/jwt_svid
 
-      # configure-aws-credentials + amazon-ecr-login are pure JS actions; they
-      # do not depend on `aws` / `pip` being on the runner image. The two ECR
-      # repos (provider-vault, provider-vault-pkg) are provisioned in aws-infra
-      # terraform; recreating them is a deliberate operator action, not
-      # something this workflow should silently bootstrap.
       - name: Configure AWS credentials (Teleport WI → STS AssumeRoleWithWebIdentity)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           web-identity-token-file: /tmp/tbot-output/jwt_svid
+
+      # Crossplane provider ECR repos live outside terraform by convention
+      # (provider-cloudflare-pkg, sourcebot, mcp-grafana — none tf-managed).
+      # Create both idempotently via the image-push WI role (already has
+      # ecr:CreateRepository). MUTABLE so a workflow_dispatch re-release can
+      # re-push the same tag after a transient failure. ubuntu-latest ships the
+      # aws CLI. No-op once the repos exist.
+      - name: Ensure ECR repositories exist
+        run: |
+          for repo in "${ECR_REPOSITORY}" "${ECR_REPOSITORY}-pkg"; do
+            if aws ecr describe-repositories --repository-names "$repo" --region "$AWS_REGION" >/dev/null 2>&1; then
+              echo "ecr repo exists: $repo"
+            else
+              aws ecr create-repository --repository-name "$repo" --region "$AWS_REGION" \
+                --image-tag-mutability MUTABLE >/dev/null
+              echo "ecr repo created: $repo"
+            fi
+          done
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
