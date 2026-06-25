@@ -64,6 +64,9 @@ jobs:
     # an xpkg — well within ubuntu-latest's disk; no self-hosted runner needed.
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write   # create the GitHub Release
+      id-token: write   # Teleport WI OIDC + cosign keyless
     env:
       IMAGE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
@@ -71,6 +74,8 @@ jobs:
         with:
           # On workflow_dispatch (re-)release the requested tag, not main.
           ref: ${{ inputs.tag || github.ref }}
+          # full history so the release-notes changelog (PREV_TAG..HEAD) works.
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -212,10 +217,53 @@ jobs:
         run: make xpkg.push
 
       - name: Sign xpkg (cosign keyless / OIDC)
+        id: xpkg-digest
         env:
           COSIGN_EXPERIMENTAL: "true"
         run: |
           # The xpkg push uses a separate ECR repo (provider-vault-pkg);
           # resolve its digest the same way we did for the controller image.
           xpkg_digest=$(docker buildx imagetools inspect "${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}-pkg:${{ env.IMAGE_TAG }}" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          echo "digest=$xpkg_digest" >> "$GITHUB_OUTPUT"
           cosign sign --yes "${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}-pkg@${xpkg_digest}"
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          IMG="${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
+          PKG="${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}-pkg:${{ env.IMAGE_TAG }}"
+          PREV_TAG=$(git tag --sort=-v:refname --list 'v*' | grep -v "^${{ env.IMAGE_TAG }}$" | head -1)
+          {
+            echo "body<<EOF"
+            echo "Maestra fork of upbound/provider-vault with the create-only password fix for \`SecretBackendConnection\` ([upbound/provider-vault#38](https://github.com/upbound/provider-vault/issues/38))."
+            echo ""
+            echo "## Crossplane provider package (xpkg)"
+            echo '```'
+            echo "$PKG"
+            echo "$PKG@${{ steps.xpkg-digest.outputs.digest }}"
+            echo '```'
+            echo ""
+            echo "## Controller image"
+            echo '```'
+            echo "$IMG"
+            echo "$IMG@${{ steps.image-digest.outputs.digest }}"
+            echo '```'
+            echo ""
+            echo "Both multi-arch (linux/amd64 + linux/arm64), cosign-signed (keyless/OIDC), SBOM attached."
+            if [ -n "$PREV_TAG" ]; then
+              echo ""
+              echo "## Changes since ${PREV_TAG}"
+              echo ""
+              git log --pretty=format:"- %s (%h)" "${PREV_TAG}..HEAD" -- . ':!*.lock' || true
+              echo ""
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.IMAGE_TAG }}
+          name: ${{ env.IMAGE_TAG }}
+          body: ${{ steps.notes.outputs.body }}
+          files: provider-vault-${{ env.IMAGE_TAG }}.sbom.spdx.json
