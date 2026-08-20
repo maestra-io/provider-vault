@@ -66,15 +66,6 @@ func Setup(mgr ctrl.Manager, o tjcontroller.Options) error {
 		opts = append(opts, managed.WithMetricRecorder(o.MetricOptions.MRMetrics))
 	}
 
-	// register webhooks for the kind v1alpha1.MfaOkta
-	// if they're enabled.
-	if o.StartWebhooks {
-		if err := ctrl.NewWebhookManagedBy(mgr, &v1alpha1.MfaOkta{}).
-			Complete(); err != nil {
-			return errors.Wrap(err, "cannot register webhook for the kind v1alpha1.MfaOkta")
-		}
-	}
-
 	if o.MetricOptions != nil && o.MetricOptions.MRStateMetrics != nil {
 		stateMetricsRecorder := statemetrics.NewMRStateRecorder(
 			mgr.GetClient(), o.Logger, o.MetricOptions.MRStateMetrics, &v1alpha1.MfaOktaList{}, o.MetricOptions.PollStateMetricInterval,

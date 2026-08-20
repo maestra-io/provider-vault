@@ -21,6 +21,7 @@ import (
 	tfschema "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 
 	"github.com/upbound/provider-vault/v4/config/database"
+	"github.com/upbound/provider-vault/v4/config/templates"
 	"github.com/upbound/provider-vault/v4/config/vault"
 )
 
@@ -84,6 +85,8 @@ func GetProvider(_ context.Context, sdkProvider *tfschema.Provider, fwProvider p
 		ujconfig.WithFeaturesPackage("internal/features"),
 		ujconfig.WithTerraformProvider(sdkProvider),
 		ujconfig.WithTerraformPluginFrameworkProvider(fwProvider),
+		ujconfig.WithControllerTemplate(templates.ControllerTemplate),
+		ujconfig.WithSetupAggregatorTemplate(templates.SetupAggregatorTemplate),
 	)
 
 	for _, configure := range []func(provider *ujconfig.Provider){
@@ -127,6 +130,8 @@ func GetProviderNamespaced(_ context.Context, sdkProvider *tfschema.Provider, fw
 		ujconfig.WithFeaturesPackage("internal/features"),
 		ujconfig.WithTerraformProvider(sdkProvider),
 		ujconfig.WithTerraformPluginFrameworkProvider(fwProvider),
+		ujconfig.WithControllerTemplate(templates.ControllerTemplate),
+		ujconfig.WithSetupAggregatorTemplate(templates.SetupAggregatorTemplate),
 	)
 
 	for _, configure := range []func(provider *ujconfig.Provider){
