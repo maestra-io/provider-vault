@@ -66,15 +66,6 @@ func Setup(mgr ctrl.Manager, o tjcontroller.Options) error {
 		opts = append(opts, managed.WithMetricRecorder(o.MetricOptions.MRMetrics))
 	}
 
-	// register webhooks for the kind v1alpha1.AuthBackendRoleTag
-	// if they're enabled.
-	if o.StartWebhooks {
-		if err := ctrl.NewWebhookManagedBy(mgr, &v1alpha1.AuthBackendRoleTag{}).
-			Complete(); err != nil {
-			return errors.Wrap(err, "cannot register webhook for the kind v1alpha1.AuthBackendRoleTag")
-		}
-	}
-
 	if o.MetricOptions != nil && o.MetricOptions.MRStateMetrics != nil {
 		stateMetricsRecorder := statemetrics.NewMRStateRecorder(
 			mgr.GetClient(), o.Logger, o.MetricOptions.MRStateMetrics, &v1alpha1.AuthBackendRoleTagList{}, o.MetricOptions.PollStateMetricInterval,
