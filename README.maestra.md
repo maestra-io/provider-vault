@@ -47,8 +47,8 @@ make xpkg.push          # xpkg -> ECR provider-vault-pkg  (CI)
 
 CI (`.github/workflows/release.yml`) builds + pushes on a `v*` tag:
 
-- image:  `515260921971.dkr.ecr.eu-central-1.amazonaws.com/provider-vault:<tag>`
-- xpkg:   `515260921971.dkr.ecr.eu-central-1.amazonaws.com/provider-vault-pkg:<tag>`
+- image:  `515260921971.dkr.ecr.us-west-2.amazonaws.com/provider-vault:<tag>`
+- xpkg:   `515260921971.dkr.ecr.us-west-2.amazonaws.com/provider-vault-pkg:<tag>`
 
 ECR auth is via Teleport workload-identity (join token
 `image-push-github-actions-provider-vault`), same pattern as provider-cloudflare.
