@@ -11,7 +11,7 @@ PROJECT_REPO := github.com/maestra-io/$(PROJECT_NAME)
 GO_REQUIRED_VERSION := 1.26
 
 # Image / registry
-IMAGE_REGISTRY ?= 515260921971.dkr.ecr.eu-central-1.amazonaws.com
+IMAGE_REGISTRY ?= 515260921971.dkr.ecr.us-west-2.amazonaws.com
 IMAGE_NAME := $(PROJECT_NAME)
 IMAGE_TAG ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 IMAGE := $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
