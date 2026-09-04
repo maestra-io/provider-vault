@@ -27,8 +27,8 @@ permissions:
   id-token: write
 
 env:
-  AWS_REGION: eu-central-1
-  ECR_REGISTRY: 515260921971.dkr.ecr.eu-central-1.amazonaws.com
+  AWS_REGION: us-west-2
+  ECR_REGISTRY: 515260921971.dkr.ecr.us-west-2.amazonaws.com
   ECR_REPOSITORY: provider-vault
   TELEPORT_FQDN: teleport.maestra.io:443
   TELEPORT_TOKEN: image-push-github-actions-provider-vault
@@ -216,8 +216,9 @@ jobs:
       - name: Build and push xpkg
         run: make xpkg.push
 
-      # Mirror the pushed tags to us-west-2 — phase 3 dual-push of the ECR
-      # eu-central-1 -> us-west-2 migration
+      # Was the phase 3 dual-push mirror of the ECR eu-central-1 -> us-west-2
+      # migration; phase 6 froze eu-central-1 and this workflow now pushes
+      # straight to us-west-2, so the mirror has nothing to copy and is off
       # (https://github.com/maestra-io/issues-maestra/issues/1354, rake #8).
       # This workflow pushes with its own make targets (buildx / crossplane
       # xpkg push), so it bypasses the dual-push already built into the shared
@@ -225,9 +226,14 @@ jobs:
       # after the last push covers them. AWS credentials from
       # configure-aws-credentials + amazon-ecr-login persist in the job env, so
       # no awsRoleArn / awsWebIdentityTokenFile is needed here.
-      - name: Mirror images to us-west-2
+      - name: Mirror images to the secondary ECR region (off since phase 6)
         uses: maestra-io/github-actions/mirror-to-secondary-ecr@main
         with:
+          # Phase 6 (https://github.com/maestra-io/issues-maestra/issues/1354):
+          # eu-central-1 is frozen, us-west-2 is the only push target, so there
+          # is nothing left to mirror. Empty skips the whole step. Kept as a
+          # call so restoring a mirror is one value.
+          secondaryRegion: ''
           repository: provider-vault,provider-vault-pkg
           tag: ${{ env.IMAGE_TAG }}
           registry: ${{ env.ECR_REGISTRY }}
