@@ -14,6 +14,7 @@ GO_REQUIRED_VERSION := 1.26
 IMAGE_REGISTRY ?= 515260921971.dkr.ecr.us-west-2.amazonaws.com
 IMAGE_NAME := $(PROJECT_NAME)
 IMAGE_TAG ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
+GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo dev)
 IMAGE := $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 
 # Tooling
@@ -64,6 +65,7 @@ build: check-go-version
 .PHONY: image
 image: build
 	docker build \
+	  --label org.opencontainers.image.revision=$(GIT_COMMIT) \
 	  --build-arg TARGETOS=$(GOOS) \
 	  --build-arg TARGETARCH=$(GOARCH) \
 	  --build-arg IMAGE_REVISION=$(IMAGE_TAG) \
@@ -87,8 +89,8 @@ image.buildx.push:
 	  --builder provider-vault-builder \
 	  --platform linux/amd64,linux/arm64 \
 	  --build-arg IMAGE_REVISION=$(IMAGE_TAG) \
-	  --label org.opencontainers.image.source=$(PROJECT_REPO) \
-	  --label org.opencontainers.image.revision=$(IMAGE_TAG) \
+	  --label org.opencontainers.image.source=https://$(PROJECT_REPO) \
+	  --label org.opencontainers.image.revision=$(GIT_COMMIT) \
 	  --label org.opencontainers.image.version=$(IMAGE_TAG) \
 	  -t $(IMAGE) \
 	  -f cluster/images/$(PROJECT_NAME)/Dockerfile \
