@@ -83,6 +83,7 @@ image.push: image
 image.buildx.push:
 	$(MAKE) build GOOS=linux GOARCH=amd64
 	$(MAKE) build GOOS=linux GOARCH=arm64
+	@test "$(GIT_COMMIT)" != dev || { echo "GIT_COMMIT is 'dev': refusing to publish an image without its commit"; exit 1; }
 	@docker buildx inspect provider-vault-builder >/dev/null 2>&1 || \
 	  docker buildx create --name provider-vault-builder --use
 	docker buildx build \
