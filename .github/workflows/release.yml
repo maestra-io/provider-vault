@@ -86,9 +86,20 @@ jobs:
           go-version-file: 'go.mod'
 
       - name: Install crossplane CLI
+        # Pinned release + sha256 instead of `curl install.sh | sh` from main
+        # (issues-maestra#1649 10.1): stable/current was serving v2.5.0, which
+        # had no GitHub release. The bundle's .tar.gz.sha256 is the checksum to
+        # trust; the per-binary bin/*.sha256 for 2.4.x does not match its file.
+        env:
+          XP_VERSION: v2.4.1
+          XP_BUNDLE_SHA256: d533f5475aa1ea94f147b9abc0eda0c9575b4599cdc62f7ef25e496f2629fa07
         run: |
-          curl -sL https://raw.githubusercontent.com/crossplane/crossplane/main/install.sh | sh
+          curl -sfL -o crossplane-cli.tar.gz "https://cli.crossplane.io/stable/${XP_VERSION}/bundle/linux_amd64/crossplane-cli.tar.gz"
+          echo "${XP_BUNDLE_SHA256}  crossplane-cli.tar.gz" | sha256sum -c -
+          tar -xzf crossplane-cli.tar.gz crossplane
           sudo install crossplane /usr/local/bin/crossplane
+          rm crossplane crossplane-cli.tar.gz
+          crossplane version --client
 
       - name: Get Teleport version
         id: tp-version
