@@ -1,0 +1,14 @@
+# Upstream lines only (identical on the upstream default branch, or written by an upstream
+# commit): upstream test fixtures / docs / vendored code, not our credentials. issues-maestra#1649
+0b3594995c87bf7c6add99efe31896b42c9994ec:config/provider-metadata.yaml:generic-api-key:7621
+0b3594995c87bf7c6add99efe31896b42c9994ec:config/provider-metadata.yaml:generic-api-key:7624
+0b3594995c87bf7c6add99efe31896b42c9994ec:config/provider-metadata.yaml:generic-api-key:7658
+config/provider-metadata.yaml:generic-api-key:12415
+config/provider-metadata.yaml:generic-api-key:12488
+config/provider-metadata.yaml:generic-api-key:12542
+config/provider-metadata.yaml:generic-api-key:2817
+config/provider-metadata.yaml:generic-api-key:2938
+config/provider-metadata.yaml:generic-api-key:7621
+config/provider-metadata.yaml:generic-api-key:7624
+config/provider-metadata.yaml:generic-api-key:7658
+config/provider-metadata.yaml:private-key:9422
