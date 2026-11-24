@@ -212,18 +212,22 @@ jobs:
       - name: Set up Docker Buildx
         uses: maestra-io/github-actions/setup-buildx@695d3e1cf135034b04c21640c13273f24867f24b # v1.85.0
 
-      - name: Install cosign
-        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
+      # GitHub Releases through nora (packages.maestra.io): 3-day hold, issues-maestra#1649.
+      # Bump the version and the sha256 (the release's asset digest) together.
+      - name: cosign through nora
+        uses: maestra-io/github-actions/nora-asset@bce883a9462ae1a0ec95b02ac797f223589ef7a5 # v1.115.0
+        with:
+          path: github/sigstore/cosign/releases/download/v2.5.2/cosign-linux-amd64
+          sha256: bcfeae05557a9f313ee4392d2f335d0ff69ebbfd232019e3736fb04999fe1734
+          bin: cosign
 
-      - name: Install syft (SBOM generator)
-        env:
-          SYFT_VERSION: 1.42.3
-        run: |
-          mkdir -p "$HOME/.local/bin"
-          curl -fsSL "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz" \
-            | tar -xzC "$HOME/.local/bin" syft
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/syft" version
+      - name: syft through nora (SBOM generator)
+        uses: maestra-io/github-actions/nora-asset@bce883a9462ae1a0ec95b02ac797f223589ef7a5 # v1.115.0
+        with:
+          path: github/anchore/syft/releases/download/v1.42.3/syft_1.42.3_linux_amd64.tar.gz
+          sha256: 0d6be741479eddd2c8644a288990c04f3df0d609bbc1599a005532a9dff63509
+          bin: syft
+          member: syft
 
       - name: Build and push multi-arch image
         run: make image.buildx.push
